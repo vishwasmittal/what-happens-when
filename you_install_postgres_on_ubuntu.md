@@ -128,10 +128,9 @@ APT reads its "address book" of software sources. APT needs to know which server
 
 ### 2. Repository Authentication and Metadata
 
-APT downloads a catalog (Release file) and verifies it's really from Ubuntu. 
+APT downloads a Release file and verifies it's really from Ubuntu. 
 
-This is like checking a store's credentials and getting their latest catalog to make sure you're not being scammed and getting the most current information.
-
+The InRelease file contains repository metadata (checksums) and is signed by a GPG key to ensure its authenticity. APT fetches this file from the repository and verifies its signature before trusting the metadata for package installation or upgrade.
 
 1. Download and verify release files:
    ```bash
@@ -154,21 +153,28 @@ This is like checking a store's credentials and getting their latest catalog to 
    Description: Ubuntu Noble 24.04
    
    MD5Sum:
-    1a2b3c4d5e6f7890 123456789 main/binary-amd64/Packages
-    abcdef1234567890 87654321 main/binary-amd64/Packages.gz
+      262e2d...          7165069 main/binary-amd64/Packages
+      61fdc2...          1808488 main/binary-amd64/Packages.gz
+      d9a7b0...          1401160 main/binary-amd64/Packages.xz
+   SHA1:
+      b81dce...          7165069 main/binary-amd64/Packages
+      41679a...          1808488 main/binary-amd64/Packages.gz
+      cfb5fc...          1401160 main/binary-amd64/Packages.xz
    SHA256:
-    123abc... 123456789 main/binary-amd64/Packages
-    abc123... 87654321 main/binary-amd64/Packages.gz
+      8f6f71...          7165069 main/binary-amd64/Packages
+      e0d7e4...          1808488 main/binary-amd64/Packages.gz
+      2a6a19...          1401160 main/binary-amd64/Packages.xz
    -----BEGIN PGP SIGNATURE-----
    [signature data]
    -----END PGP SIGNATURE-----
    ```
 
-2. Verify repository signature:
+2. Verify repository InRelease file signature:
    ```bash
    # Using Ubuntu's keyring
-   gpgv --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \
-        /var/lib/apt/lists/partial/archive.ubuntu.com_ubuntu_dists_noble_InRelease
+   gpgv \
+      --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \            # Official Ubuntu public keys to sign package matadata
+      /var/lib/apt/lists/archive.ubuntu.com_ubuntu_dists_noble_InRelease    # location of InRelease file
    
    # If verification fails:
    E: Release file not valid yet (invalid for another Xh XXmin XXs)
@@ -181,7 +187,9 @@ This is like checking a store's credentials and getting their latest catalog to 
 
 APT downloads and reads detailed information about all available packages to find what exactly it needs and its specifications.
 
-1. Parse `Packages.gz` repository downloaded above:
+1. APT downloads the `Packages.gz` to `/var/lib/apt/lists` and verifies the data integrity using checksums in InRelease file.
+
+2. Parse `Packages.gz` repository downloaded above:
 ```yaml
 # Example package entry - like a product description:
 # Entry taken from http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/Packages.gz
