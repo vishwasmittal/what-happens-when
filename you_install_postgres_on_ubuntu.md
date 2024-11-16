@@ -468,3 +468,9 @@ System Requirements and Performance:
 - Initial disk usage: ~100MB
 - Runtime memory usage: ~200MB
 - Idle CPU usage: <1%
+
+
+
+## TODO
+- [ ] Add a sequence diagram.
+- [ ] Review postgres preinst, installation, postinst steps and add more details.
