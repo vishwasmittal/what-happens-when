@@ -1,6 +1,6 @@
-# What happens when... you install PostgreSQL 16 on Ubuntu
+# What Happens When You Install PostgreSQL 16 on Ubuntu
 
-This document attempts to answer in detail what happens when you run `sudo apt install postgresql-16` on Ubuntu. We'll examine everything from command processing to having a running PostgreSQL server.
+This document explains in detail what happens when you run `sudo apt install postgresql-16` on Ubuntu. We'll examine everything from command processing to having a running PostgreSQL server.
 
 ## Command Processing
 
@@ -10,27 +10,28 @@ When you hit Enter after typing `sudo apt install postgresql-16`:
    - Tokenizes input into: `sudo`, `apt`, `install`, `postgresql-16`
    - Locates `sudo` executable in PATH (typically `/usr/bin/sudo`)
    - Creates a child process to run this command:
-      ```c
-      pid = fork()
-      if (pid == 0) {
-         // Execute `/usr/bin/sudo` in child process
-         execve("/usr/bin/sudo", 
-            [
-               "sudo",              // argv[0] - program name
-               "apt",              // argv[1] - first argument
-               "install",          // argv[2] - second argument
-               "postgresql-16",    // argv[3] - third argument
-               NULL               // argv[4] - array terminator
-            ],
-            env                    // Current environment variables
-         );
-      } else {
-         // Parent process (bash)
-         waitpid(pid, &status, 0);
-      }
-      ```
+     ```c
+     pid = fork()
+     if (pid == 0) {
+        // Execute `/usr/bin/sudo` in child process
+        execve("/usr/bin/sudo", 
+           [
+              "sudo",             // argv[0] - program name
+              "apt",              // argv[1] - first argument
+              "install",          // argv[2] - second argument
+              "postgresql-16",    // argv[3] - third argument
+              NULL               // argv[4] - array terminator
+           ],
+           env                    // Current environment variables
+        );
+     } else {
+        // Parent process (bash)
+        waitpid(pid, &status, 0);
+     }
+     ```
+
 2. `sudo` verifies user permissions and elevates the process privileges to root:
-   1. Read main sudoers file `/etc/sudoers`
+   1. Reads main sudoers file `/etc/sudoers`:
       ```bash
       # User privilege specification
       root    ALL=(ALL:ALL) ALL
@@ -43,14 +44,14 @@ When you hit Enter after typing `sudo apt install postgresql-16`:
 
       @includedir /etc/sudoers.d
       ```
-   2. Read additional configurations `/etc/sudoers.d/*`
+   2. Reads additional configurations `/etc/sudoers.d/*`:
       ```bash
       # User rules for ubuntu
       ubuntu ALL=(ALL) NOPASSWD:ALL
       ```
-   3. If the user has sufficient privilege to run this command, the system changes the UID (user id) from current user (UID=1000) to root (UID=0), giving it root privileges for the duration of the process.
+   3. If the user has sufficient privileges to run this command, the system changes the UID (user ID) from current user (UID=1000) to root (UID=0), giving it root privileges for the duration of the process.
 
-3. Sudo executes `apt`
+3. Sudo executes `apt`:
    ```c
    pid_t childPid = fork();
    if (childPid == 0) {
@@ -70,18 +71,18 @@ When you hit Enter after typing `sudo apt install postgresql-16`:
    }
    ```
 
-NOTE:
-   1. Parent process waits for child process to finish with `waitpid()`
-   2. Child process inherits stdout/stderr, allowing output to terminal.
+**Note:**
+1. Parent process waits for child process to finish with `waitpid()`
+2. Child process inherits stdout/stderr, allowing output to terminal
 
 ### Process Hierarchy
 ```bash
 # Before sudo:
-bash (UID=1000)            # bash running with current user id (1000)
+bash (UID=1000)            # bash running with current user ID (1000)
 └── sudo (UID=1000 → 0)    # sudo starts with current UID (1000) but escalates to root (0)
 
 # After sudo:
-bash (UID=1000)            # Bash running with current UID (100)
+bash (UID=1000)            # Bash running with current UID (1000)
 └── sudo (UID=0)           # sudo running with root UID (0)
     └── apt (UID=0)        # apt starts with root UID (0)
 ```
@@ -93,9 +94,8 @@ To install PostgreSQL, APT (Advanced Package Tool) needs to:
 2. Make sure the download source is trustworthy
 3. Figure out what additional software (dependencies) is needed
 4. Check if there's enough space
-5. Prepare for download and ask for user input.
-6. Download the packages and verify checksum.
-
+5. Prepare for download and ask for user input
+6. Download the packages and verify checksums
 
 ### 1. Repository Configuration Processing
 
@@ -124,7 +124,6 @@ APT reads its "address book" of software sources. APT needs to know which server
    http://archive.ubuntu.com/ubuntu/dists/noble-updates/main/binary-amd64/Packages.gz
    ...
    ```
-
 
 ### 2. Repository Authentication and Metadata
 
@@ -173,15 +172,14 @@ The InRelease file contains repository metadata (checksums) and is signed by a G
    ```bash
    # Using Ubuntu's keyring
    gpgv \
-      --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \            # Official Ubuntu public keys to sign package matadata
-      /var/lib/apt/lists/archive.ubuntu.com_ubuntu_dists_noble_InRelease    # location of InRelease file
+      --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \            # Official Ubuntu public keys to sign package metadata
+      /var/lib/apt/lists/archive.ubuntu.com_ubuntu_dists_noble_InRelease    # Location of InRelease file
    
    # If verification fails:
    E: Release file not valid yet (invalid for another Xh XXmin XXs)
    # or
    E: GPG error: http://archive.ubuntu.com noble InRelease: Invalid signature
    ```
-
 
 ### 3. Package List Processing
 
@@ -190,38 +188,35 @@ APT downloads and reads detailed information about all available packages to fin
 1. APT downloads the `Packages.gz` to `/var/lib/apt/lists` and verifies the data integrity using checksums in InRelease file.
 
 2. Parse `Packages.gz` repository downloaded above:
-```yaml
-# Example package entry - like a product description:
-# Entry taken from http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/Packages.gz
-Package: postgresql-16
-Architecture: amd64
-Version: 16.2-1ubuntu4
-Priority: optional
-Section: database
-Origin: Ubuntu
-Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
-Original-Maintainer: Debian PostgreSQL Maintainers <team+postgresql@tracker.debian.org>
-Bugs: https://bugs.launchpad.net/ubuntu/+filebug
-Installed-Size: 43800
-Provides: postgresql-16-jit-llvm (= 17), postgresql-contrib-16
-Depends: locales | locales-all, postgresql-client-16, postgresql-common (>= 252~), ssl-cert, tzdata, debconf (>= 0.5) | debconf-2.0, libc6 (>= 2.38), libgcc-s1 (>= 3.3.1), libgssapi-krb5-2 (>= 1.14+dfsg), libicu74 (>= 74.1-1~), libldap2 (>= 2.6.2), libllvm17t64, liblz4-1 (>= 0.0~r130), libpam0g (>= 0.99.7.1), libpq5 (>= 16~~), libselinux1 (>= 3.1~), libssl3t64 (>= 3.0.0), libstdc++6 (>= 5.2), libsystemd0, libuuid1 (>= 2.16), libxml2 (>= 2.7.4), libxslt1.1 (>= 1.1.25), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)
-Recommends: sysstat
-Breaks: dbconfig-common (<< 2.0.22~)
-Filename: pool/main/p/postgresql-16/postgresql-16_16.2-1ubuntu4_amd64.deb
-Size: 15452168
-MD5sum: a0ddd38a3ce650de38cbd1fa4960861f
-SHA1: 55098507be06aa3bbdb7d0fef855338c6195e0fd
-SHA256: 7f25383e8f39ca99f4886b7b2cbb31c62534ac924e3a61da3f0e8e6456091e69
-SHA512: 181d452698e0895c5f54d916a4ee2f2bf6899175e9f5a7d0049723026db9360da0a3f4001f34e3015bc0e0d90d92a63eb161b50d62085cc2c87f0a559e317fe2
-Homepage: http://www.postgresql.org/
-Description: The World's Most Advanced Open Source Relational Database
-Task: postgresql-server
-Postgresql-Catversion: 202307071
-Description-md5: d7367291c15795e56aa78252604f9ced
-```
-
-
-
+   ```yaml
+   # Example package entry - like a product description:
+   # Entry taken from http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/Packages.gz
+   Package: postgresql-16
+   Architecture: amd64
+   Version: 16.2-1ubuntu4
+   Priority: optional
+   Section: database
+   Origin: Ubuntu
+   Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
+   Original-Maintainer: Debian PostgreSQL Maintainers <team+postgresql@tracker.debian.org>
+   Bugs: https://bugs.launchpad.net/ubuntu/+filebug
+   Installed-Size: 43800
+   Provides: postgresql-16-jit-llvm (= 17), postgresql-contrib-16
+   Depends: locales | locales-all, postgresql-client-16, postgresql-common (>= 252~), ssl-cert, tzdata, debconf (>= 0.5) | debconf-2.0, libc6 (>= 2.38), libgcc-s1 (>= 3.3.1), libgssapi-krb5-2 (>= 1.14+dfsg), libicu74 (>= 74.1-1~), libldap2 (>= 2.6.2), libllvm17t64, liblz4-1 (>= 0.0~r130), libpam0g (>= 0.99.7.1), libpq5 (>= 16~~), libselinux1 (>= 3.1~), libssl3t64 (>= 3.0.0), libstdc++6 (>= 5.2), libsystemd0, libuuid1 (>= 2.16), libxml2 (>= 2.7.4), libxslt1.1 (>= 1.1.25), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)
+   Recommends: sysstat
+   Breaks: dbconfig-common (<< 2.0.22~)
+   Filename: pool/main/p/postgresql-16/postgresql-16_16.2-1ubuntu4_amd64.deb
+   Size: 15452168
+   MD5sum: a0ddd38a3ce650de38cbd1fa4960861f
+   SHA1: 55098507be06aa3bbdb7d0fef855338c6195e0fd
+   SHA256: 7f25383e8f39ca99f4886b7b2cbb31c62534ac924e3a61da3f0e8e6456091e69
+   SHA512: 181d452698e0895c5f54d916a4ee2f2bf6899175e9f5a7d0049723026db9360da0a3f4001f34e3015bc0e0d90d92a63eb161b50d62085cc2c87f0a559e317fe2
+   Homepage: http://www.postgresql.org/
+   Description: The World's Most Advanced Open Source Relational Database
+   Task: postgresql-server
+   Postgresql-Catversion: 202307071
+   Description-md5: d7367291c15795e56aa78252604f9ced
+   ```
 
 ### 4. Dependency Resolution
 
@@ -237,7 +232,7 @@ APT figures out what other software PostgreSQL needs to work properly.
    └── System libraries       # Basic system requirements
    ```
 
-2. Version Resolution: Check the availability and details of the package `postgresql-16` in the APT repositories configured on the system.
+2. Version Resolution: Check the availability and details of the package `postgresql-16` in the APT repositories configured on the system:
    ```bash
    $ apt-cache policy postgresql-16
    # Output format
@@ -245,7 +240,7 @@ APT figures out what other software PostgreSQL needs to work properly.
       Installed: <installed_version>     # Installed version (if any)
       Candidate: <candidate_version>     # Version chosen to install (higher priority or version)
       Version table:                     # Lists all available versions of postgresql-16
-         <version_num> <priority>        # default priority is 500
+         <version_num> <priority>        # Default priority is 500
             <priority> <repository_url> <distribution>/<repository_section> <architecture> <file>
 
    # Actual output
@@ -260,7 +255,6 @@ APT figures out what other software PostgreSQL needs to work properly.
          16.2-1ubuntu4 500
             500 http://ap-south-1.ec2.archive.ubuntu.com/ubuntu noble/main amd64 Packages
    ```
-
 
 ### 5. Package Download Preparation
 
@@ -295,7 +289,6 @@ APT calculates total download size and checks if you have enough space.
    touch /var/cache/apt/archives/partial/postgresql-16_16.2-1ubuntu1_amd64.deb.dl
    ```
 
-
 At this point, APT has:
 1. Verified repository authenticity
 2. Located all required packages
@@ -303,8 +296,7 @@ At this point, APT has:
 4. Calculated disk space requirements
 5. Prepared for download
 
-The next phase would be the actual package download and installation, which begins once the user confirms the installation prompt.
-
+The next phase begins once the user confirms the installation prompt.
 
 ### 6. Package Download
 
@@ -348,9 +340,9 @@ The next phase would be the actual package download and installation, which begi
    ```bash
    # Extract package contents
    dpkg-deb -x postgresql-16_16.2-1.deb /
-   
+
    # Main directories:
-   /etc/postgresql/16/          # Config files
+   /etc/postgresql/16/          # Configuration files
    /usr/lib/postgresql/16/      # Binaries
    /usr/share/postgresql/16/    # Shared files
    /var/lib/postgresql/16/      # Data directory
@@ -403,10 +395,10 @@ The next phase would be the actual package download and installation, which begi
 1. Memory Allocation:
    ```plaintext
    # For 1GB RAM system:
-   shared_buffers      = 128MB   # 25% reduced for small RAM
-   work_mem           = 4MB     # Per operation memory
+   shared_buffers       = 128MB   # 25% reduced for small RAM
+   work_mem             = 4MB     # Per operation memory
    maintenance_work_mem = 64MB    # For maintenance operations
-   wal_buffers        = 4MB     # WAL writing buffer
+   wal_buffers          = 4MB     # WAL writing buffer
    ```
 
 2. Disk Organization:
@@ -449,7 +441,7 @@ The next phase would be the actual package download and installation, which begi
 
 After installation completes:
 
-1. PostgreSQL server is:
+1. PostgreSQL Server State:
    - Running as service (postgresql@16-main)
    - Listening on port 5432
    - Managing shared memory segments
@@ -457,22 +449,22 @@ After installation completes:
    - Writing to WAL files
    - Performing background maintenance
 
-2. System is configured with:
+2. System Configuration:
    - Default databases created
    - System catalog populated
-   - PostgreSQL superuser account
-   - Basic security settings
+   - PostgreSQL superuser account configured
+   - Basic security settings applied
    - Logging enabled
 
-The installation process involves multiple stages, each performed by different components:
+The installation process involves multiple components:
 - APT handles package management
 - dpkg handles package extraction
 - pg_createcluster initializes the database
 - systemd manages the service
 - postmaster manages the running instance
 
-On a system with 1 vCPU, 1GB RAM, and 24GB SSD:
-- Installation takes 2-5 minutes
-- Uses ~100MB disk initially
-- Consumes ~200MB RAM when running
-- Uses minimal CPU at idle (<1%)
+System Requirements and Performance:
+- Installation time: 2-5 minutes on a system with 1 vCPU
+- Initial disk usage: ~100MB
+- Runtime memory usage: ~200MB
+- Idle CPU usage: <1%
