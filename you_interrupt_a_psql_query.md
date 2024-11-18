@@ -1,23 +1,27 @@
 # What happens when you interrupt a PSQL query?
 
-What happens when you interrupt a PostgreSQL query by pressing `Ctrl + C` in psql shell or press stop button in a your DB viewer tool?
+This guide explains what happens when you interrupt a PostgreSQL query by pressing `Ctrl + C` in the psql shell or clicking the stop button in your database viewer tool.
 
 ## Overview
 
-When you press `Ctrl + C` during a long-running query, PostgreSQL doesn't immediately terminate the connection. Instead, it implements a sophisticated cancellation mechanism allowing safe query interruption, ensures data integrity, reusing the main client-server connection.
+When you interrupt a long-running query, PostgreSQL doesn't immediately terminate the connection. Instead, it implements a sophisticated cancellation mechanism that:
+- Allows safe query interruption
+- Ensures data integrity
+- Preserves the main client-server connection
 
-## The Initial Connection
+## Initial Connection Setup
 
 When psql first connects to PostgreSQL, the server provides two crucial pieces of information:
 
 ```c
+// Example
 ConnStatusResponse {
-    backend_pid: 12345,          // Example PID
+    backend_pid: 12345,          // Example process ID
     cancel_secret_key: 0xABCD    // Random 32-bit key
 }
 ```
 
-It is stored in the connection object `PGconn` along with other info.
+This information is stored in the connection object `PGconn` along with other connection details:
 
 ```c
 typedef struct {
@@ -29,64 +33,67 @@ typedef struct {
 
 ## The Cancellation Process
 
-### 1. Client Side (PSQL)
+### 1. Client-Side Handling (PSQL)
 
-When you press `Ctrl + C`, psql checks the process is in critical section and notifies the server accordingly.
+When you press `Ctrl + C`, psql first checks if the process is in a critical section before notifying the server.
 
-> NOTE: A critical section is a piece of code that must execute atomically (without interruption) to maintain consistency and prevent race conditions, such as when modifying shared data or performing operations that must complete fully or not at all.
+> **Note**: A critical section is code that must execute atomically (without interruption) to maintain consistency and prevent race conditions. Examples include modifying shared data or performing operations that must either complete fully or not execute at all.
+
+There are two possible scenarios:
 
 ```sh
-# Case 1: Not in critical section:
-## Set the flag and notify the server immediately.
+# Scenario 1: Not in critical section
 [Ctrl+C] -> [SIGINT Handler] -> [Sets cancel_pressed = true] 
                                           ↓
                                   [Sends cancel immediately]
 
 
-# Case 2: During a critical Section:
-## 1. Set the flag and return.
+# Scenario 2: During critical section
+## Step 1: Set flag and return
 [Ctrl+C] -> [SIGINT Handler] -> [Sets cancel_pressed = true] -> [Returns immediately]
 
-## 2. Critical Section Continues...
+## Step 2: Critical section continues
 
-## 3. Notify server after critical section ends.
+## Step 3: Server notification after critical section ends
 [Critical section ends] -> [Checks cancel_pressed] -> [Sends cancel if flag was set]
 ```
 
-The common problems prevented:
+This protection mechanism prevents common problems:
 ```
 Without Protection:
 [Interrupt] -> [Immediate Cancel] -> [Inconsistent State]
-                                    - Leaked resources
-                                    - Corrupted display
-                                    - Wrong terminal settings
-                                    - Incomplete operations
+    Results in:
+    - Resource leaks
+    - Corrupted display
+    - Incorrect terminal settings
+    - Incomplete operations
 
 With Protection:
 [Interrupt] -> [Set Flag] -> [Complete Operation] -> [Process Cancel]
-                             - Clean resource cleanup
-                             - Consistent display
-                             - Proper terminal state
-                             - Complete operations
+    Ensures:
+    - Clean resource cleanup
+    - Consistent display
+    - Proper terminal state
+    - Complete operations
 ```
 
 Example:
-```c
-// Without protection
+```sql
+-- Without protection
 \copy users TO 'users.csv'
 [Ctrl+C]
-// Result: Partially written file, terminal in wrong state
+-- Result: Partially written file, incorrect terminal state
 
-// With protection
+-- With protection
 \copy users TO 'users.csv'
 [Ctrl+C]
-// Result: Operation either completes or doesn't start,
-// terminal state preserved, file not corrupted
+-- Result: Operation either completes or doesn't start,
+-- terminal state remains correct, file integrity preserved
 ```
 
-### 2. Establishing a Cancel Connection
+### 2. Cancel Connection Establishment
 
-The interesting part is that psql doesn't use the existing connection to send the cancellation request. Instead, it creates a new, temporary connection specifically for cancellation:
+Instead of using the existing connection, psql creates a new, temporary connection specifically for cancellation:
 
 ```c
 int PQrequestCancel(PGconn *conn)
@@ -107,7 +114,7 @@ int PQrequestCancel(PGconn *conn)
 }
 ```
 
-The flow looks like this:
+The connection flow works as follows:
 
 ```
 Normal Connection:
@@ -118,9 +125,9 @@ Normal Connection:
   └———→ [postmaster] ——[SIGINT]——————┘
 ```
 
-### 3. Server Side Processing
+### 3. Server-Side Processing
 
-The PostgreSQL server processes the cancellation request through multiple stages:
+The PostgreSQL server processes cancellation requests in multiple stages:
 
 ```c
 // In postmaster (main server process)
@@ -158,25 +165,25 @@ static void handle_sigint_backend(int sig)
 }
 ```
 
-## Notes
+## Key Points
 
-1. **Unique Cancel Key**: Each connection gets a random 32-bit key
+1. **Unique Cancel Key**: Each connection receives a random 32-bit key
 2. **Separate Connection**: Cancellation requires a new authenticated connection
-3. **Process Validation**: Both PID and key must match
-4. **Limited Scope**: Only affects the specific backend process
-5. **Data Integrity**: The backend process checks for cancellation at safe points, ensuring no data corruption
-6. **Connection Preservation**: The original connection remains intact
-7. **Clean Cleanup**: Resources are properly released
+3. **Process Validation**: Both PID and key must match for security
+4. **Limited Scope**: Cancellation affects only the specific backend process
+5. **Data Integrity**: The backend process checks for cancellation only at safe points
+6. **Connection Preservation**: The original connection remains active
+7. **Clean Cleanup**: All resources are properly released
 
 ## Complete Cancellation Flow
 
 1. User presses `Ctrl + C` in psql
 2. PSQL catches SIGINT
-3. New connection opened to server
+3. New connection opens to server
 4. Cancel request sent with PID and key
 5. Postmaster validates request
 6. Backend process receives SIGINT
 7. Backend sets interrupt flag
-8. Query cancellation at next safe point
-9. Error message returned to client
-10. Original connection maintained
+8. Query cancels at next safe point
+9. Error message returns to client
+10. Original connection maintains its state
