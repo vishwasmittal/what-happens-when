@@ -2,7 +2,9 @@
 
 This guide explains what happens when you interrupt a PostgreSQL query by pressing `Ctrl + C` in the psql shell or clicking the stop button in your database viewer tool.
 
-## Overview
+> Note: Skip to the end for a quick overview.
+
+## Introduction
 
 When you interrupt a long-running query, PostgreSQL doesn't immediately terminate the connection. Instead, it implements a sophisticated cancellation mechanism that:
 - Allows safe query interruption
@@ -157,11 +159,13 @@ static void handle_sigint_backend(int sig)
 {
     // Set cancellation flag
     InterruptPending = true;
-    
-    // Wake up backend process
+
+    // Use Postgresql's latch objects for IPC to
+    // wake up backend process that might be idle.
     SetLatch(&MyProc->procLatch);
-    
-    // Don't exit - check flag at safe points
+
+    // For busy workers, latch.is_set & interrupt
+    // flag are checked and processed at safe-points.
 }
 ```
 

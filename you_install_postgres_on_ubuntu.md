@@ -2,6 +2,8 @@
 
 This document explains in detail what happens when you run `sudo apt install postgresql-16` on Ubuntu. We'll examine everything from command processing to having a running PostgreSQL server.
 
+> Note: Skip to the end for a quick overview.
+
 ## Command Processing
 
 When you hit Enter after typing `sudo apt install postgresql-16`:
